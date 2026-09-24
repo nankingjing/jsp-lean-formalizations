@@ -25,7 +25,7 @@ example : Nat.Prime 7 := by norm_num
 
 example : Nat.factorial 5 = 120 := by norm_num
 
-example : Nat.choose 10 3 = 120 := by norm_num
+example : Nat.choose 10 3 = 120 := by decide
 
 example (n : ℕ) : (n : ℤ) ^ 2 ≥ 0 := by positivity
 
@@ -43,9 +43,21 @@ example : ((range 10).filter Nat.Prime).card = 4 := by decide
     will need to phrase "no `k` of them are collinear". -/
 example : (range 5).card ≤ 5 := by simp
 
-/-! ### Asymptotics: `ex(n, F) = O(n ^ (4/3))` has to be spellable somehow -/
+/-! ### Asymptotics: `ex(n, F) = O(n ^ (4/3))` has to be spellable somehow
 
-example : (fun n : ℕ => n ^ 2 + n) =O[Filter.atTop] (fun n : ℕ => n ^ 2) := by
-  simpa using Asymptotics.IsBigO.refl (fun n : ℕ => n ^ 2 : ℕ → ℕ)
+Note the codomain is `ℝ`, not `ℕ`: `=O[·]` is stated for normed groups and `ℕ`
+carries no `Norm` instance, so `(fun n : ℕ => n ^ 2) =O[atTop] (fun n : ℕ => n ^ 2)`
+fails instance synthesis.  Every asymptotic statement about `ℕ`-valued counting
+functions has to be coerced to `ℝ` first. -/
+
+example : (fun n : ℕ => (n : ℝ) ^ 2) =O[Filter.atTop] (fun n : ℕ => (n : ℝ) ^ 2) :=
+  Asymptotics.isBigO_refl _ _
+
+example : (fun n : ℕ => (n : ℝ)) =O[Filter.atTop] (fun n : ℕ => (n : ℝ) ^ 2) := by
+  simpa using Asymptotics.IsBigO.of_bound 1 (by
+    filter_upwards [Filter.eventually_ge_atTop 1] with n hn
+    simp only [Real.norm_eq_abs, abs_of_nonneg (by positivity : (0 : ℝ) ≤ (n : ℝ)),
+      abs_of_nonneg (by positivity : (0 : ℝ) ≤ (n : ℝ) ^ 2)]
+    nlinarith [mul_nonneg (by linarith : (0 : ℝ) ≤ n) (by linarith : (0 : ℝ) ≤ n - 1)])
 
 end Jsp.Probe
