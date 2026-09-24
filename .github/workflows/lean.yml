@@ -1,0 +1,65 @@
+name: Lean CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: probe core-Lean idioms
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain leanprover/lean4:v4.34.0
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Toolchain versions
+        run: |
+          lean --version
+          lake --version
+
+      - name: Run probe files
+        run: |
+          set +e
+          for f in probe/*.lean; do
+            echo "=================== $f ==================="
+            lean "$f"
+            echo "--- exit=$? ---"
+          done
+          echo "PROBES DONE"
+          exit 0
+
+  build:
+    name: build lake packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Build each package
+        run: |
+          set -e
+          shopt -s nullglob
+          found=0
+          for d in */; do
+            if [ -f "$d/lakefile.toml" ] || [ -f "$d/lakefile.lean" ]; then
+              found=1
+              echo "::group::build $d"
+              cd "$d"
+              elan toolchain install "$(cat lean-toolchain)"
+              lake build
+              cd ..
+              echo "::endgroup::"
+            fi
+          done
+          [ "$found" = 0 ] && echo "no lake packages yet"
+          exit 0
