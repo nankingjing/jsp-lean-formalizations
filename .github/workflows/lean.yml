@@ -25,7 +25,7 @@ jobs:
       - name: Run probe files
         run: |
           set +e
-          for f in probe/*.lean probe2/*.lean probe3/*.lean; do
+          for f in probe*/*.lean; do
             echo "=================== $f ==================="
             start=$(date +%s)
             lean "$f"

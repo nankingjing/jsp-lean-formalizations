@@ -30,16 +30,32 @@ theorem not_isSquare_of_noSquareB (n : Nat) (h : noSquareB n = true) : ¬ IsSqua
   -- inside the range we scanned.  Supplying `Nat.le_mul_self` explicitly is the
   -- whole fix: on its own `omega` cannot find this nonlinear fact.
   have hk_le : k ≤ n := by
-    have h1 : k ≤ k * k := Nat.le_mul_self k
-    omega
-  have hmem : k ∈ List.range (n + 1) := by
-    rw [List.mem_range]
-    omega
+    rw [hk]
+    exact Nat.le_mul_self k
+  have hmem : k ∈ List.range (n + 1) :=
+    List.mem_range.mpr (Nat.lt_succ_of_le hk_le)
   have hk' := (List.all_eq_true.mp h) k hmem
   simp only [decide_eq_true_eq] at hk'
   exact hk' hk
 
 #print axioms not_isSquare_of_noSquareB
+
+/-- Same statement, proved with `omega` for the arithmetic.  Kept only to compare
+    axiom footprints: the `omega` version drags in `Quot.sound`, the explicit
+    version above does not. -/
+theorem not_isSquare_of_noSquareB_omega (n : Nat) (h : noSquareB n = true) :
+    ¬ IsSquare n := by
+  rintro ⟨k, hk⟩
+  have hk_le : k ≤ n := by
+    have h1 : k ≤ k * k := Nat.le_mul_self k
+    omega
+  have hmem : k ∈ List.range (n + 1) := by
+    rw [List.mem_range]; omega
+  have hk' := (List.all_eq_true.mp h) k hmem
+  simp only [decide_eq_true_eq] at hk'
+  exact hk' hk
+
+#print axioms not_isSquare_of_noSquareB_omega
 
 -- ============================================================================
 -- Variant B: how we actually want to state it — universally quantified, so the
@@ -69,6 +85,8 @@ theorem square_bridge (n : Nat) : noSquareB n = true → ¬ IsSquare n :=
 #check @Nat.mod_eq_zero_of_dvd
 #check @List.all_eq_true
 #check @decide_eq_true_eq
+#check @List.mem_range
+#check @Nat.lt_succ_of_le
 
 -- ============================================================================
 -- The two numbers in JSP-000301.  12167 = 23^3,  12168 = 8 * 9 * 169.

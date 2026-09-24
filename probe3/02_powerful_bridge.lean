@@ -50,8 +50,8 @@ theorem isPowerful_of_isPowerfulD (n : Nat) (hn : 0 < n) (h : IsPowerfulD n) :
     IsPowerful n := by
   intro p hpn hpr
   have hp_le : p ≤ n := Nat.le_of_dvd hn hpn
-  have hmem : p ∈ List.range (n + 1) := by
-    rw [List.mem_range]; omega
+  have hmem : p ∈ List.range (n + 1) :=
+    List.mem_range.mpr (Nat.lt_succ_of_le hp_le)
   rcases h p hmem with hnp | hnp | hpp
   · exact absurd hpn hnp
   · exact absurd hpr hnp

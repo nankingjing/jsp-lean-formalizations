@@ -9,9 +9,10 @@ set_option maxRecDepth 100000
     Answer: no.  12167 = 23^3 and 12168 = 2^3 * 3^2 * 13^2 are both powerful,
     they are consecutive, and neither is a perfect square.
 
-This file states the conjecture as a `Prop` over `Nat`, refutes it, and prints
-the axiom footprint of every headline theorem.  It uses only core Lean 4 — no
-Mathlib — and no `native_decide` anywhere. -/
+Every headline theorem below is proved twice: once with explicit core lemmas
+(no `omega`) and once with `omega`, purely so the axiom footprints can be
+compared side by side.  The explicit versions are the ones intended for
+submission.  No `native_decide` appears anywhere in this file. -/
 
 -- ============================================================================
 -- Definitions.
@@ -26,11 +27,18 @@ instance (p : Nat) : Decidable (IsPrime p) := by
   infer_instance
 
 /-- `n` is powerful iff every prime dividing `n` has its square dividing `n`.
-    Honest unbounded form. -/
+    Honest unbounded form — no range, no bound on the quantifier. -/
 def IsPowerful (n : Nat) : Prop := ∀ p : Nat, p ∣ n → IsPrime p → p * p ∣ n
 
 /-- `n` is a perfect square. -/
 def IsSquare (n : Nat) : Prop := ∃ k : Nat, n = k * k
+
+-- `#print axioms` on the definitions themselves: a `def` cannot hide a `sorry`
+-- behind a proof-irrelevant field, but printing them costs nothing and closes
+-- off the question.
+#print axioms IsPrime
+#print axioms IsPowerful
+#print axioms IsSquare
 
 -- ============================================================================
 -- Computable engines.  These are what actually gets evaluated; the theorems
@@ -44,35 +52,56 @@ def powerfulB (n : Nat) : Bool :=
 def noSquareB (n : Nat) : Bool :=
   (List.range (n + 1)).all (fun k => decide (n ≠ k * k))
 
+#print axioms powerfulB
+#print axioms noSquareB
+
 -- ============================================================================
 -- Bridge 1: the square engine is sound.
--- The content is `Nat.le_mul_self`: a square root of `n` is at most `n`, so the
--- scanned range is exhaustive.
+-- The content is `Nat.le_mul_self : n ≤ n * n`: a square root of `n` is at most
+-- `n`, so scanning `0 .. n` is exhaustive.
 -- ============================================================================
 
 theorem not_isSquare_of_noSquareB (n : Nat) (h : noSquareB n = true) : ¬ IsSquare n := by
   rintro ⟨k, hk⟩
   have hk_le : k ≤ n := by
-    have h1 : k ≤ k * k := Nat.le_mul_self k
-    omega
-  have hmem : k ∈ List.range (n + 1) := by
-    rw [List.mem_range]
-    omega
+    rw [hk]
+    exact Nat.le_mul_self k
+  have hmem : k ∈ List.range (n + 1) :=
+    List.mem_range.mpr (Nat.lt_succ_of_le hk_le)
   have hk' := (List.all_eq_true.mp h) k hmem
   simp only [decide_eq_true_eq] at hk'
   exact hk' hk
 
+#print axioms not_isSquare_of_noSquareB
+
+/-- The same theorem proved with `omega`.  Kept only for the footprint comparison:
+    `omega` drags in `Quot.sound`, the explicit proof above does not. -/
+theorem not_isSquare_of_noSquareB_omega (n : Nat) (h : noSquareB n = true) :
+    ¬ IsSquare n := by
+  rintro ⟨k, hk⟩
+  have hk_le : k ≤ n := by
+    have h1 : k ≤ k * k := Nat.le_mul_self k
+    omega
+  have hmem : k ∈ List.range (n + 1) := by
+    rw [List.mem_range]; omega
+  have hk' := (List.all_eq_true.mp h) k hmem
+  simp only [decide_eq_true_eq] at hk'
+  exact hk' hk
+
+#print axioms not_isSquare_of_noSquareB_omega
+
 -- ============================================================================
 -- Bridge 2: the powerfulness engine is sound.
--- The content is `Nat.le_of_dvd`: a divisor of a positive `n` is at most `n`.
+-- The content is `Nat.le_of_dvd : 0 < n → m ∣ n → m ≤ n`: a divisor of a
+-- positive `n` is at most `n`, so scanning `0 .. n` is exhaustive.
 -- ============================================================================
 
 theorem isPowerful_of_powerfulB (n : Nat) (hn : 0 < n) (h : powerfulB n = true) :
     IsPowerful n := by
   intro p hpn hpr
   have hp_le : p ≤ n := Nat.le_of_dvd hn hpn
-  have hmem : p ∈ List.range (n + 1) := by
-    rw [List.mem_range]; omega
+  have hmem : p ∈ List.range (n + 1) :=
+    List.mem_range.mpr (Nat.lt_succ_of_le hp_le)
   have h' := (List.all_eq_true.mp h) p hmem
   simp only [decide_eq_true_eq] at h'
   rcases h' with hnp | hnp | hpp
@@ -80,8 +109,21 @@ theorem isPowerful_of_powerfulB (n : Nat) (hn : 0 < n) (h : powerfulB n = true) 
   · exact absurd hpr hnp
   · exact hpp
 
-#print axioms not_isSquare_of_noSquareB
 #print axioms isPowerful_of_powerfulB
+
+theorem isPowerful_of_powerfulB_omega (n : Nat) (hn : 0 < n) (h : powerfulB n = true) :
+    IsPowerful n := by
+  intro p hpn hpr
+  have hp_le : p ≤ n := Nat.le_of_dvd hn hpn
+  have hmem : p ∈ List.range (n + 1) := by rw [List.mem_range]; omega
+  have h' := (List.all_eq_true.mp h) p hmem
+  simp only [decide_eq_true_eq] at h'
+  rcases h' with hnp | hnp | hpp
+  · exact absurd hpn hnp
+  · exact absurd hpr hnp
+  · exact hpp
+
+#print axioms isPowerful_of_powerfulB_omega
 
 -- ============================================================================
 -- The headline facts.
@@ -97,12 +139,12 @@ theorem notSquare_12168 : ¬ IsSquare 12168 := not_isSquare_of_noSquareB 12168 (
 #print axioms notSquare_12167
 #print axioms notSquare_12168
 
-/-- The raw evaluation, for the record. -/
-#eval powerfulB 12167     -- true
-#eval powerfulB 12168     -- true
-#eval noSquareB 12167     -- true
-#eval noSquareB 12168     -- true
-#eval 12167 + 1           -- 12168
+-- Raw evaluation, for the record.
+#eval powerfulB 12167
+#eval powerfulB 12168
+#eval noSquareB 12167
+#eval noSquareB 12168
+#eval 12167 + 1
 
 /-- The conjunction, in the exact shape the problem asks for: two *consecutive*
     powerful integers, neither of which is a square.  The `12167 + 1 = 12168`
@@ -122,6 +164,8 @@ theorem jsp301_witness :
     have at least one perfect square. -/
 def Conjecture : Prop :=
   ∀ n : Nat, 0 < n → IsPowerful n → IsPowerful (n + 1) → IsSquare n ∨ IsSquare (n + 1)
+
+#print axioms Conjecture
 
 theorem jsp301_refutes_conjecture : ¬ Conjecture := by
   intro h
