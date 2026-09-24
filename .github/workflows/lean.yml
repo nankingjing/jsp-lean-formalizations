@@ -25,10 +25,12 @@ jobs:
       - name: Run probe files
         run: |
           set +e
-          for f in probe/*.lean; do
+          for f in probe/*.lean probe2/*.lean; do
             echo "=================== $f ==================="
+            start=$(date +%s)
             lean "$f"
-            echo "--- exit=$? ---"
+            rc=$?
+            echo "--- exit=$rc  elapsed=$(( $(date +%s) - start ))s ---"
           done
           echo "PROBES DONE"
           exit 0
