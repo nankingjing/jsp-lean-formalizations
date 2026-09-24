@@ -1,0 +1,149 @@
+name: Mathlib CI
+
+# Builds the `mathlib/` package: pinned Lean 4 + Mathlib from the official
+# olean cache.  This is the pipeline the prizes' Lean submissions must pass,
+# so a green run here is the acceptance test for everything under `mathlib/`.
+#
+# The `inventory` job is separate and tolerant on purpose: `mathlib/inventory/`
+# is a wall of `#check`s whose failures are the *output* (they say which
+# Mathlib names exist), so it must not be allowed to fail the workflow.
+
+on:
+  push:
+    paths:
+      - 'mathlib/**'
+      - '.github/workflows/mathlib.yml'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mathlib/**'
+
+concurrency:
+  group: mathlib-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: lake build (Mathlib)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: mathlib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        working-directory: .
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned toolchain
+        run: |
+          elan toolchain install "$(cat lean-toolchain)"
+          lean --version
+          lake --version
+
+      - name: Cache Mathlib oleans
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mathlib
+          key: mathlib-cache-${{ runner.os }}-${{ hashFiles('mathlib/lean-toolchain') }}
+          restore-keys: |
+            mathlib-cache-${{ runner.os }}-
+
+      - name: Cache Lake packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            mathlib/.lake/packages
+            mathlib/.lake/build
+          key: lake-pkgs-${{ runner.os }}-${{ hashFiles('mathlib/lean-toolchain', 'mathlib/lakefile.lean', 'mathlib/lake-manifest.json') }}
+          restore-keys: |
+            lake-pkgs-${{ runner.os }}-${{ hashFiles('mathlib/lean-toolchain') }}-
+
+      - name: Resolve dependencies
+        run: lake update
+
+      - name: Fetch Mathlib olean cache
+        run: lake exe cache get
+
+      - name: lake build
+        run: |
+          start=$(date +%s)
+          lake build
+          echo "build took $(( $(date +%s) - start ))s"
+
+      - name: Record resolved manifest
+        if: always()
+        run: |
+          echo "=== lean-toolchain ==="; cat lean-toolchain
+          echo "=== lake-manifest.json ==="; cat lake-manifest.json 2>/dev/null || echo "(none)"
+          echo "=== mathlib rev ==="
+          git -C .lake/packages/mathlib rev-parse HEAD 2>/dev/null || echo "(no mathlib checkout)"
+
+      - name: Upload manifest for pinning
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lake-manifest
+          path: mathlib/lake-manifest.json
+          if-no-files-found: ignore
+
+  inventory:
+    name: mathlib inventory probe (tolerant)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    needs: build
+    defaults:
+      run:
+        working-directory: mathlib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install elan
+        working-directory: .
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned toolchain
+        run: elan toolchain install "$(cat lean-toolchain)"
+
+      - name: Restore Lake packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            mathlib/.lake/packages
+            mathlib/.lake/build
+          key: lake-pkgs-${{ runner.os }}-${{ hashFiles('mathlib/lean-toolchain', 'mathlib/lakefile.lean', 'mathlib/lake-manifest.json') }}
+          restore-keys: |
+            lake-pkgs-${{ runner.os }}-${{ hashFiles('mathlib/lean-toolchain') }}-
+
+      - name: Cache Mathlib oleans
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mathlib
+          key: mathlib-cache-${{ runner.os }}-${{ hashFiles('mathlib/lean-toolchain') }}
+          restore-keys: |
+            mathlib-cache-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        run: lake update
+
+      - name: Fetch Mathlib olean cache
+        run: lake exe cache get
+
+      - name: Run inventory probes (errors are the output, do not fail)
+        run: |
+          set +e
+          for f in inventory/*.lean; do
+            echo "=================== $f ==================="
+            lake env lean "$f"
+            echo "--- exit=$? ---"
+          done
+          echo "INVENTORY DONE"
+          exit 0
